@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/andybrewer/mvp/mvp.css">
+    <title>Memechat chatroom</title>
+    <style>
+        .container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container.video {
+            width: fit-content;
+            height: fit-content;
+            align-items: baseline;
+        }
+
+        .container.memes2{
+            display: none;
+        }
+
+        .container.memes,
+        .container.memes2 {
+            min-width: 360px;
+            max-height: 1000px;
+            overflow: auto; 
+        }
+
+        .container.memes img,
+        .container.memes2 img {
+            margin-bottom: 1.25rem;
+        }
+
+        .container.memes img:last-child,
+        .container.memes2 img:last-child {
+            margin-bottom: 0rem;
+        }
+
+        .container.username {
+            flex-direction: row;
+            align-items: center;
+            margin-bottom: .50rem;
+        }
+
+        .container.username div:first-child {
+            width: 10px;
+            height: 10px;
+            border-radius: 100%;
+            background-color: #118bee;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <header>
+            <h2>Memechat</h2>
+            <p>Time for selfie memes &#129313;</p>
+        </header>
+        <section>
+            <aside class="container video">
+                <label for="text">Meme text</label>
+                <input type="text" name="text" style="width:93%"
+                    placeholder="e.g. When the bug you fixed created a new bug">
+                <video id="video" width="360"></video>
+                <button>Send meme</button>
+            </aside>
+            <canvas style="display:none" id="canvas" width="360" height="270"></canvas>
+            <aside class="container memes">
+            </aside>
+            <aside class="container memes2">
+            </aside>
+        </section>
+    </main>
+</body>
+<script>
+    const video = document.querySelector('#video')
+    const canvas = document.querySelector('#canvas')
+    const button = document.querySelector('button')
+    let picsContainer = document.querySelector('.container.memes')
+    let fakePicsContainer = document.querySelector('.container.memes2')
+    const txt = document.querySelector('input')
+    const username = localStorage.getItem('username')
+
+    navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+        .then(stream => {
+            video.srcObject = stream
+            video.play()
+        })
+
+    button.onclick = e => {
+        const context = canvas.getContext('2d')
+        context.drawImage(video, 0, 0, 360, 270)
+        const base64Data = canvas.toDataURL().replace(/^data:image\/png;base64,/, '')
+
+        fetch('/memechat/memes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ base64Data, text: txt.value, username })
+        })
+            .then(res => res.json())
+            .then(res => {
+                const userMeme = document.querySelector(`#${username}-meme`)
+                picsContainer.innerHTML += getMemeHtml(username)
+            })
+    }
+
+    function displayMemes() {
+        fetch('/memechat/users')
+            .then(res => res.json())
+            .then((res) => {
+                return new Promise(resolve => {
+                    picsContainer.innerHTML = res.reduce((acc, user) => {
+                        if(user.meme) return acc + getMemeHtml(user.name)
+                        return acc
+                    }, '')
+                    let count = 0
+                    const images = Array.from(picsContainer.querySelectorAll('img'))
+                    images.forEach(image => {
+                        image.onload = () => {
+                            count++
+                            if (count === res.length) resolve()
+                        }
+                    }) 
+                })
+            })
+            .then(()=>{
+                    const $tempContainer = picsContainer
+                    picsContainer = fakePicsContainer 
+                    fakePicsContainer = $tempContainer
+                    fakePicsContainer.style.display = 'block'
+                    picsContainer.style.display = 'none'
+                    setTimeout(displayMemes,500)
+            })
+    }
+
+    function getMemeHtml(username) {
+        return `<div class="container username">
+                    <div></div>
+                    <b>${username}</b>
+                </div>
+                <img id="${username}-meme" src="/memechat/memes/${username}?${Date.now()}"/>`
+    }
+
+    displayMemes()
+
+</script>
+
+</html>
